@@ -100,21 +100,58 @@ def build_menu():
     )
 
 
+# Patch pystray Windows backend to support balloon click (NIN_BALLOONUSERCLICK = 0x405)
+_original_on_notify = pystray._win32.Icon._on_notify
+
+def _patched_on_notify(self, wparam, lparam):
+    if lparam == 0x405:  # NIN_BALLOONUSERCLICK
+        self._notify_action()
+    else:
+        _original_on_notify(self, wparam, lparam)
+
+pystray._win32.Icon._on_notify = _patched_on_notify
+
+
+class ClipMonIcon(pystray.Icon):
+    """Custom tray icon with balloon-click copy support"""
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.last_tag = None
+
+    def _notify_action(self):
+        """Called when user clicks the notification balloon (Windows)"""
+        if self.last_tag:
+            try:
+                pyperclip.copy(self.last_tag)
+            except Exception:
+                pass
+
+
 class NotifyHandler(FileSystemEventHandler):
     """Watch .notify file for balloon tips"""
     def __init__(self, icon_ref):
         self.icon_ref = icon_ref
+        self._last_notify = ""
+        self._last_time = 0
 
     def on_modified(self, event):
         p = Path(event.src_path)
         if p.name == ".notify" and p.parent == CLIPS_DIR:
             try:
                 content = NOTIFY_PATH.read_text(encoding='utf-8').strip()
-                if content:
-                    parts = content.split(None, 1)
-                    tag = parts[0]
-                    fname = parts[1] if len(parts) > 1 else ""
-                    self.icon_ref.notify(f"Saved {tag}\n{fname}", "Kimi ClipMon")
+                if not content:
+                    return
+                # Deduplicate: skip if same content within 2 seconds
+                now = time.time()
+                if content == self._last_notify and now - self._last_time < 2:
+                    return
+                self._last_notify = content
+                self._last_time = now
+                parts = content.split(None, 1)
+                tag = parts[0]
+                fname = parts[1] if len(parts) > 1 else ""
+                self.icon_ref.last_tag = tag
+                self.icon_ref.notify(f"Saved {tag}\n{fname}", "Kimi ClipMon")
             except Exception:
                 pass
 
@@ -142,7 +179,7 @@ def main():
     d_thread.start()
 
     # Create tray icon
-    icon = pystray.Icon(
+    icon = ClipMonIcon(
         "KimiClipMon",
         load_icon_image(),
         "Kimi ClipMon",
