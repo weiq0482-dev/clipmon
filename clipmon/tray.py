@@ -30,6 +30,26 @@ LATEST_MD = daemon.LATEST_MD
 MANIFEST_PATH = daemon.MANIFEST_PATH
 
 
+def resource_path(relative_path: str) -> Path:
+    """Resolve bundled resource path (PyInstaller or dev)."""
+    if getattr(sys, 'frozen', False):
+        base = Path(sys._MEIPASS)
+    else:
+        base = Path(__file__).parent
+    return base / relative_path
+
+
+def load_icon_image():
+    """Load bundled icon.ico if available, else generate fallback."""
+    try:
+        icon_path = resource_path("icon.ico")
+        if icon_path.exists():
+            return Image.open(str(icon_path))
+    except Exception:
+        pass
+    return create_icon_image()
+
+
 def create_icon_image():
     """64x64 tray icon"""
     w, h = 64, 64
@@ -71,11 +91,11 @@ def build_menu():
     """Dynamic context menu"""
     return pystray.Menu(
         pystray.MenuItem("Recent tags", pystray.Menu(*read_recent_tags())),
-        pystray.MenuItem.SEPARATOR,
+        pystray.Menu.SEPARATOR,
         pystray.MenuItem("Open clips folder", lambda _icon, _item: os.startfile(str(CLIPS_DIR))),
         pystray.MenuItem("View latest list", lambda _icon, _item: os.startfile(str(LATEST_MD)) if LATEST_MD.exists() else None),
         pystray.MenuItem("Cleanup old clips", lambda _icon, _item: daemon.cleanup(force_log=False)),
-        pystray.MenuItem.SEPARATOR,
+        pystray.Menu.SEPARATOR,
         pystray.MenuItem("Exit", lambda _icon, _item: _icon.stop()),
     )
 
@@ -124,7 +144,7 @@ def main():
     # Create tray icon
     icon = pystray.Icon(
         "KimiClipMon",
-        create_icon_image(),
+        load_icon_image(),
         "Kimi ClipMon",
         menu=build_menu()
     )
