@@ -29,8 +29,8 @@ LATEST_MD = CLIPS_DIR / "latest.md"
 LOG_PATH = CLIPS_DIR / "daemon.log"
 NOTIFY_PATH = CLIPS_DIR / ".notify"
 
-MAX_CLIPS = 50
-MAX_DAYS = 7
+MAX_CLIPS = 500
+MAX_DAYS = 30
 WATCH_INTERVAL = 1.0  # 目录轮询间隔（秒）
 
 # 支持的图片格式
@@ -193,7 +193,8 @@ def process_inbox_file(src_path: Path) -> tuple[Path, str] | None:
         notify(f"{clip_tag} {filename}")
 
         log(f"Saved: {filename} -> {clip_tag}")
-        cleanup()
+        # cleanup() removed from here; now runs on a timer to avoid
+        # rewriting manifest too frequently and breaking client caches.
 
         return dst_path, clip_tag
 
@@ -232,6 +233,17 @@ def clipboard_bridge():
         time.sleep(poll_interval)
 
 
+def periodic_cleanup(interval: float = 300.0):
+    """定时清理线程，避免每次截图后重写 manifest 导致客户端缓存失效。"""
+    while running:
+        time.sleep(interval)
+        if running:
+            try:
+                cleanup()
+            except Exception as e:
+                log(f"Periodic cleanup error: {e}")
+
+
 def watch_main():
     """目录监视模式主循环"""
     log("=" * 50)
@@ -244,6 +256,10 @@ def watch_main():
     # 启动剪贴板桥接线程（读取剪贴板图片并保存到 inbox，不修改剪贴板）
     bridge_thread = threading.Thread(target=clipboard_bridge, daemon=True)
     bridge_thread.start()
+
+    # 启动定时清理线程（每 5 分钟一次，减少 manifest 重写频率）
+    cleanup_thread = threading.Thread(target=periodic_cleanup, args=(300.0,), daemon=True)
+    cleanup_thread.start()
 
     # 初始已知文件集合
     known_files = {p.name for p in INBOX_DIR.iterdir() if p.is_file()}

@@ -111,12 +111,13 @@ def read_recent_tags():
                 try:
                     obj = json.loads(line)
                     tag = obj.get('id', '')
+                    path = obj.get('path', '')
                     fname = obj.get('filename', '')
                     label = f"{tag}  {fname}"
                     items.append(
                         pystray.MenuItem(
                             label,
-                            lambda _icon, _item, _tag=tag: pyperclip.copy(_tag)
+                            lambda _icon, _item, _path=path: pyperclip.copy(_path)
                         )
                     )
                 except Exception:
@@ -158,12 +159,13 @@ class ClipMonIcon(pystray.Icon):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.last_tag = None
+        self.last_path = None
 
     def _notify_action(self):
         """Called when user clicks the notification balloon (Windows)"""
-        if self.last_tag:
+        if self.last_path:
             try:
-                pyperclip.copy(self.last_tag)
+                pyperclip.copy(self.last_path)
             except Exception:
                 pass
 
@@ -192,6 +194,7 @@ class NotifyHandler(FileSystemEventHandler):
                 tag = parts[0]
                 fname = parts[1] if len(parts) > 1 else ""
                 self.icon_ref.last_tag = tag
+                self.icon_ref.last_path = find_clip_path(tag)
                 self.icon_ref.notify(f"Saved {tag}\n{fname}", "Kimi ClipMon")
             except Exception:
                 pass
