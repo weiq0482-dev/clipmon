@@ -10,6 +10,7 @@ import os
 import sys
 import threading
 import time
+from io import BytesIO
 from pathlib import Path
 
 import pyperclip
@@ -58,6 +59,46 @@ def create_icon_image():
     dc.rounded_rectangle((4, 4, w - 4, h - 4), radius=12, outline='#00d4aa', width=3)
     dc.text((18, 22), 'KM', fill='#00d4aa')
     return img
+
+
+def copy_image_to_clipboard(image_path: str) -> bool:
+    """Copy PNG image to Windows clipboard as DIB."""
+    try:
+        import win32clipboard
+        img = Image.open(image_path)
+        if img.mode in ('RGBA', 'LA', 'P'):
+            img = img.convert('RGB')
+        bio = BytesIO()
+        img.save(bio, 'BMP')
+        dib_data = bio.getvalue()[14:]  # Remove BMP file header
+        win32clipboard.OpenClipboard()
+        win32clipboard.EmptyClipboard()
+        win32clipboard.SetClipboardData(win32clipboard.CF_DIB, dib_data)
+        win32clipboard.CloseClipboard()
+        return True
+    except Exception:
+        return False
+
+
+def find_clip_path(tag: str) -> str | None:
+    """Look up image path by @N tag in manifest."""
+    if not MANIFEST_PATH.exists():
+        return None
+    try:
+        with open(MANIFEST_PATH, 'r', encoding='utf-8') as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    obj = json.loads(line)
+                    if obj.get('id') == tag:
+                        return obj.get('path')
+                except json.JSONDecodeError:
+                    continue
+    except Exception:
+        pass
+    return None
 
 
 def read_recent_tags():

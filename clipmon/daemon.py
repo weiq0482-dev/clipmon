@@ -111,8 +111,7 @@ def is_image_file(name: str) -> bool:
 
 def cleanup(force_log: bool = True) -> int:
     entries = read_all_entries()
-    if not entries:
-        return 0
+    manifest_paths = {e["path"] for e in entries}
 
     now = datetime.now()
     cutoff = now - timedelta(days=MAX_DAYS)
@@ -133,9 +132,6 @@ def cleanup(force_log: bool = True) -> int:
         for e in remaining[:excess]:
             remove_paths.add(e["path"])
 
-    if not remove_paths:
-        return 0
-
     removed = 0
     for p in remove_paths:
         try:
@@ -147,6 +143,15 @@ def cleanup(force_log: bool = True) -> int:
     new_entries = [e for e in entries if e["path"] not in remove_paths]
     rewrite_manifest(new_entries)
     update_latest_md(new_entries)
+
+    # Clean up orphan PNGs not tracked in manifest
+    for f in CLIPS_DIR.glob("*.png"):
+        if str(f) not in manifest_paths:
+            try:
+                f.unlink(missing_ok=True)
+                removed += 1
+            except Exception as e:
+                log(f"Cleanup orphan error: {e}")
 
     if force_log:
         log(f"Cleanup: removed {removed} clip(s), {len(new_entries)} remaining")
